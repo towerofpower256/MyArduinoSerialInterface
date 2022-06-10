@@ -59,10 +59,10 @@ ON
 ## Version 4
 Now uses commands instead of just single characters. Each command is on a single line. The commands are also not case-sensitive, so you can go crazy on the SHIFT key and the commands will still work
 
-OK = prints the message `I am OK`.
-SET = set the value of the variable to something (e.g. `set abc123`).
-GET = prints the value of the variable e.g. `That value: abc123`.
-Unknown commands get the mesage `Unknown command`.
+* OK = prints the message `I am OK`.
+* SET = set the value of the variable to something (e.g. `set abc123`).
+* GET = prints the value of the variable e.g. `That value: abc123`.
+* Unknown commands get the mesage `Unknown command`.
 
 ```
 1000
@@ -86,8 +86,8 @@ A relatively complete serial interface, passing CLI details between functions, e
 I got rid of the `millis` being outputted to the console, I've proven that that part works just fine.
 
 Commands control the onboard LED.
-OK = prints the message `I am OK`.
-SET = Sets the LED. `SET ON` turns it on, `SET OFF` turns it off.
+* OK = prints the message `I am OK`.
+* SET = Sets the LED. `SET ON` turns it on, `SET OFF` turns it off.
 
 ```
 > OK

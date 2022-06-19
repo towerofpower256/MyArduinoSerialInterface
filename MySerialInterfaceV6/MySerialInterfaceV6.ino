@@ -4,13 +4,11 @@
 
 #define CHAR_SPACE " "
 
-#include "MyCliBuffer.h"
-#include "MyCliCmd.h"
 #include "MyCli.h"
 
-const char CLI_DELIM_SPACE[] = CHAR_SPACE;
-const char CLI_DELIM_EOL[] = "\r\n";
-const char CLI_DELIM_SPACE_EOL = " \r\n";
+char CLI_DELIM_SPACE[] = CHAR_SPACE;
+char CLI_DELIM_EOL[] = "\r\n";
+char CLI_DELIM_SPACE_EOL[] = " \r\n";
 
 // ======================================================
 // Main program
@@ -23,13 +21,14 @@ const char ledValOn[] = "ON";
 const char ledValOff[] = "OFF";
 
 
-void cliOK(char *cmd, MyCliBuffer& buffer) {
+void cliOK(char *cmd, char* buffer) {
   Serial.println("I am OK");
 }
 
-void cliSetLed(char *cmd, MyCliBuffer& buffer) {
-  char* cliPart = buffer.readTo(CLI_DELIM_SPACE_EOL);
+void cliSetLed(char *cmd, char* buffer) {
+  char* cliPart = strtok(buffer, CLI_DELIM_SPACE_EOL);
   strupr(cliPart); // Make uppercase, don't care about case sensitivity
+  Serial.print("LED part "); Serial.println(cliPart);
   
   if (!strcmp(cliPart, ledValOn)) {
     setLed(true);
@@ -40,7 +39,7 @@ void cliSetLed(char *cmd, MyCliBuffer& buffer) {
   }
 }
 
-void cliMillis(char *cmd, MyCliBuffer& buffer) {
+void cliMillis(char *cmd, char* buffer) {
   Serial.println(millis());
 }
 
@@ -69,15 +68,9 @@ void setup() {
   // Setup the CLI
   cli = MyCli();
 
-  // Explicitly construct the CMD objects, then pass them through.
-  MyCliCmd cmdOk = MyCliCmd("ok", &cliOK);
-  cli.addCmd(&cmdOk);
-  
-  MyCliCmd cmdSet = MyCliCmd("set", &cliSetLed);
-  cli.addCmd(&cmdSet);
-
-  MyCliCmd cmdMillis = MyCliCmd("millis", &cliMillis);
-  cli.addCmd(&cmdMillis);
+  cli.addCmd("ok", &cliOK);
+  cli.addCmd("set", &cliSetLed);
+  cli.addCmd("millis", &cliMillis);
 }
 
 void loop() {

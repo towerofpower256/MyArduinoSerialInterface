@@ -1,7 +1,9 @@
 #define CLI_CMD_NUM_MAX 6 // Max size of command list
-#define CLI_MODE_WAITING 0
-#define CLI_MODE_READING 1
+#define CLI_BUFFER_SIZE 32 // Max length of the serial command buffer
 
+#define CLI_MODE_WAITING_START 0
+#define CLI_MODE_READING 1
+#define CLI_MODE_WAITING_EOL 2
 
 
 class MyCli {
@@ -11,30 +13,34 @@ class MyCli {
     void think();
     void execLine();
     void printHelp();
-    void addCmd(MyCliCmd* cmd);
-    void addCmd(char *cmd, void (*callback)(char*, MyCliBuffer&));
+    void addCmd(char *cmd, void (*callback)(char*, char*));
     byte cliMode;
   private:
-    MyCliBuffer buffer;
-    uint8_t cmdIdx;
-    MyCliCmd* cmdList[CLI_CMD_NUM_MAX];
+    char buffer[CLI_BUFFER_SIZE];
+    byte bufferIdx;
+    void bufferReset();
+    
+    //MyCliCmd* cmdList[CLI_CMD_NUM_MAX];
     byte cmdListIdx;
+    char* cmdListCmd[CLI_CMD_NUM_MAX];
+    void (*cmdListCallback[CLI_CMD_NUM_MAX])(char*, char*);
 };
 
 MyCli::MyCli() {
-  cliMode = CLI_MODE_WAITING;
-  buffer = MyCliBuffer();
-  cmdIdx = 0;
-  memset(this->cmdList, 0, sizeof(this->cmdList));
+  cliMode = CLI_MODE_WAITING_START;
+  memset(buffer, 0, CLI_BUFFER_SIZE);
+  
   cmdListIdx = 0;
+  memset(cmdListCmd, 0, sizeof(cmdListCmd));
+  memset(cmdListCallback, 0, sizeof(cmdListCallback));
+
+  bufferReset();
 }
 
 void MyCli::printHelp() {
   Serial.println(F("--- HELP ---"));
   for (byte iCmd=0; iCmd < cmdListIdx; iCmd++) {
-    /*Serial.print(iCmd); Serial.print(CHAR_SPACE);*/
-    /*Serial.print((int)this->cmdList[iCmd], HEX); Serial.print(CHAR_SPACE);*/
-    Serial.println(this->cmdList[iCmd]->cmd);
+    Serial.println(this->cmdListCmd[iCmd]);
   }
 }
 
@@ -59,48 +65,64 @@ void MyCli::addCmd(char *cmd, void (*callback)(char*, MyCliBuffer&)) {
 */
 
 
-void MyCli::addCmd(MyCliCmd* cmd) {
+void MyCli::addCmd(char* cmd, void (*_callback)(char*, char*)) {
   // Don't add a CMD if the list is full
   if (cmdListIdx >= CLI_CMD_NUM_MAX) {
     Serial.println("ERR CMD LIST FULL");
     return;
   }
 
-  Serial.print("ADD CMD "); Serial.print(cmdListIdx); Serial.print(CHAR_SPACE); Serial.println(cmd->cmd);
-  cmdList[cmdListIdx] = cmd;
+  // Make commands upper case, to ignore case sensitivity
+  strupr(cmd);
+
+  Serial.print("ADD CMD "); Serial.print(cmdListIdx); Serial.print(CHAR_SPACE); Serial.println(cmd);
+  cmdListCmd[cmdListIdx] = cmd;
+  cmdListCallback[cmdListIdx] = _callback;
   cmdListIdx++;
 }
 
 void MyCli::think() {
   while (Serial.available()) {
     char c = Serial.read();
-    //Serial.print(">"); Serial.println(c);
+    //Serial.print(bufferIdx); Serial.print(' '); Serial.println(c);
 
     // CLI is waiting for an actual character, not a space, newline, or carriage-return
     // On the ASCII chart, printable characters start at number 32
     // https://www.ascii-code.com/
-    if (this->cliMode == CLI_MODE_WAITING) {
+    if (cliMode == CLI_MODE_WAITING_START) {
       if (c >= 32 && c != ' ') {
-        this->cliMode = CLI_MODE_READING; // Start reading
-        //Serial.println("READING");
+        cliMode = CLI_MODE_READING; // Start reading
+        //Serial.println("SREAD");
+      }
+    }
+
+    // CLI is waiting for the end of line. Previous line was probably bad.
+    if (cliMode == CLI_MODE_WAITING_EOL) {
+      if (c == '\n' || c == '\r') {
+        cliMode = CLI_MODE_WAITING_START;
+        return;
       }
     }
 
     // CLI is reading
-    if (this->cliMode == CLI_MODE_READING) {
+    if (cliMode == CLI_MODE_READING) {
       if (c == '\n' || c == '\r') {
         // Is an end of line. Execute the line.
+        //Serial.println("EOL");
         this->execLine();
         return;
       }
 
       // Add the character to the buffer
-      if (!this->buffer.isFull()) {
-        this->buffer.add(c);
+      if (bufferIdx < CLI_BUFFER_SIZE) {
+        //Serial.println("ADD C");
+        buffer[bufferIdx] = c;
+        bufferIdx++;
 
-        // If the buffer is full, execute now
-        if (this->buffer.isFull()) {
-          this->execLine();
+        // If the buffer is full
+        if (bufferIdx >= CLI_BUFFER_SIZE-1) {
+          // Overflow
+          cliMode = CLI_MODE_WAITING_EOL;
           return;
         }
       }
@@ -110,19 +132,21 @@ void MyCli::think() {
 
 // Execute the CLI command
 void MyCli::execLine() {
-  Serial.print("EXEC> "); Serial.println(this->buffer.cliBuffer);
+  Serial.print("EXEC> "); Serial.println(buffer);
 
-  if (this->buffer.cliIdx == 0) {
+  if (bufferIdx == 0) {
     // Line buffer is empty, nothing to do here
     Serial.println("EMPTY");
     return; 
   }
 
   // Get the first part, ready to the first space character
-  char *cliPart = this->buffer.startRead(" ");
+  char delim[] = " \r\n";
+  char* cliPartPtr;
+  char* cliPart = strtok_r(buffer, delim, &cliPartPtr);
   strupr(cliPart); // Make uppercase, so command is not case sensitive. "set" and "SeT" is the same as "SET".
+  Serial.print("CMD> "); Serial.println(cliPart);
 
-  // TODO run commands
   // Loop through commands, looking for one with a matching command.
   // Once found, run it
   bool ranCmd = false;
@@ -132,12 +156,12 @@ void MyCli::execLine() {
   }
 
   if (!ranCmd) {
-    for (byte iCmd=0; iCmd < this->cmdListIdx; iCmd++) {
-      //Serial.print("T ");Serial.print(iCmd); Serial.println(this->cmdList[iCmd]->cmd);
-      if (!strcmp(this->cmdList[iCmd]->cmd, cliPart)) {
+    for (byte iCmd=0; iCmd < cmdListIdx; iCmd++) {
+      //Serial.print("T ");Serial.print(iCmd); Serial.println(cmdListCmd[iCmd]);
+      if (!strcmp(cmdListCmd[iCmd], cliPart)) {
         // Found a match. Run it.
         //Serial.print("Running cmd: "); Serial.println(cliPart);
-        this->cmdList[iCmd]->callback(cliPart, this->buffer);
+        cmdListCallback[iCmd](cliPart, cliPartPtr);
         ranCmd = true;
       }
     }
@@ -152,6 +176,11 @@ void MyCli::execLine() {
 }
 
 void MyCli::reset() {
-  this->cliMode = CLI_MODE_WAITING;
-  this->buffer.reset();
+  cliMode = CLI_MODE_WAITING_START;
+  bufferReset();
+}
+
+void MyCli::bufferReset() {
+  bufferIdx = 0;
+  memset(buffer, 0, CLI_BUFFER_SIZE);
 }

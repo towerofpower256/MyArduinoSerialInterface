@@ -181,3 +181,44 @@ void cliSetLed(char *cmd, MyCliBuffer& buffer) {
   }
 }
 ```
+
+## Version 7
+Similar to the previous version with a library function to keep things consistent, this version includes a `MySettings` object full of configurations, and there are CLI commands to get and set the configuration.
+
+This is very close to my goal of a configuration that can be updated on-the-fly, and without needing to re-flash the controller any time the configuration has changed.
+
+I'm really proud of this one.
+
+```
+START
+ADD CMD 0 OK
+ADD CMD 1 LED
+ADD CMD 2 MILLIS
+ADD CMD 3 SET
+ADD CMD 4 GET
+EXEC> ok
+I am OK
+EXEC> led on
+LED ON
+EXEC> led off
+LED OFF
+EXEC> get
+--- CONFIG ---
+WTIMEOUT	60
+WSSID	
+WPWD	
+EXEC> set wtimeout 25
+CONF: WTIMEOUT
+OK
+EXEC> set wssid MyHomeNetwork
+CONF: WSSID
+OK
+EXEC> set wpwd co07Pas@worD
+CONF: WPWD
+OK
+EXEC> get
+--- CONFIG ---
+WTIMEOUT	25
+WSSID	MyHomeNetwork
+WPWD	co07Pas@worD
+```
